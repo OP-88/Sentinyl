@@ -1,0 +1,98 @@
+version: '3.8'
+
+services:
+  # PostgreSQL Database
+  db:
+    image: postgres:15-alpine
+    container_name: sentinyl_db
+    environment:
+      POSTGRES_DB: sentinyldb
+      POSTGRES_USER: sentinyl
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-sentinyl_secure_pass}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./database/init.sql:/docker-entrypoint-initdb.d/init.sql
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U sentinyl -d sentinyldb"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    networks:
+      - sentinyl_network
+
+  # Redis Message Queue
+  redis:
+    image: redis:7-alpine
+    container_name: sentinyl_redis
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_data:/data
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped
+    networks:
+      - sentinyl_network
+
+  # FastAPI Backend
+  api:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    container_name: sentinyl_api
+    environment:
+      DATABASE_URL: postgresql://sentinyl:${POSTGRES_PASSWORD:-sentinyl_secure_pass}@db:5432/sentinyldb
+      REDIS_URL: redis://redis:6379/0
+    ports:
+      - "8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    restart: unless-stopped
+    networks:
+      - sentinyl_network
+
+  # Security Scanner Workers
+  worker:
+    build:
+      context: .
+      dockerfile: workers/Dockerfile
+    container_name: sentinyl_worker
+    environment:
+      DATABASE_URL: postgresql://sentinyl:${POSTGRES_PASSWORD:-sentinyl_secure_pass}@db:5432/sentinyldb
+      REDIS_URL: redis://redis:6379/0
+      GITHUB_TOKEN: ${GITHUB_TOKEN}
+      SLACK_WEBHOOK_URL: ${SLACK_WEBHOOK_URL}
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - sentinyl_network
+    # Scale workers horizontally with: docker-compose up -d --scale worker=3
+
+volumes:
+  postgres_data:
+    driver: local
+  redis_data:
+    driver: local
+
+networks:
+  sentinyl_network:
+    driver: bridge
