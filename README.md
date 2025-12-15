@@ -359,6 +359,10 @@ GPL-3.0 License - See [LICENSE](LICENSE) file for details
 
 Contributions welcome! Please feel free to submit a Pull Request.
 
+## 👤 Author
+
+**OP-88**
+
 ## 📧 Support
 
 For bugs and feature requests, please create an issue on GitHub.
@@ -367,4 +371,4 @@ For bugs and feature requests, please create an issue on GitHub.
 
 **Built with ❤️ for IT Security Teams**
 
-*"Sleep at night knowing your brand is protected."*
+*Enterprise-grade Digital Risk Protection with Graph Analytics, Risk Scoring & Threat Intelligence*
