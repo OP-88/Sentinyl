@@ -2,6 +2,7 @@ version: '3.8'
 
 services:
   # PostgreSQL Database
+  # SECURITY: NO external port mapping - internal network only
   db:
     image: postgres:15-alpine
     container_name: sentinyl_db
@@ -11,9 +12,8 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-sentinyl_secure_pass}
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      - ./database/init.sql:/docker-entrypoint-initdb.d/init.sql
-    ports:
-      - "5432:5432"
+      - ./database/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    # REMOVED: ports - Database not accessible from host (network isolation)
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U sentinyl -d sentinyldb"]
       interval: 10s
@@ -24,14 +24,14 @@ services:
       - sentinyl_network
 
   # Redis Message Queue
+  # SECURITY: NO external port mapping - internal network only
   redis:
     image: redis:7-alpine
     container_name: sentinyl_redis
     command: redis-server --appendonly yes
     volumes:
       - redis_data:/data
-    ports:
-      - "6379:6379"
+    # REMOVED: ports - Redis not accessible from host (network isolation)
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 10s
@@ -42,6 +42,7 @@ services:
       - sentinyl_network
 
   # FastAPI Backend
+  # SECURITY: ONLY service with external port exposure
   api:
     build:
       context: .
@@ -55,8 +56,9 @@ services:
       NEO4J_PASSWORD: ${NEO4J_PASSWORD:-graph_secure_pass}
       STRIPE_API_KEY: ${STRIPE_API_KEY}
       TEAMS_WEBHOOK_URL: ${TEAMS_WEBHOOK_URL}
+      SLACK_WEBHOOK_URL: ${SLACK_WEBHOOK_URL}
     ports:
-      - "8000:8000"
+      - "8000:8000"  # ONLY externally accessible service
     depends_on:
       db:
         condition: service_healthy
@@ -72,8 +74,18 @@ services:
     restart: unless-stopped
     networks:
       - sentinyl_network
+    # SECURITY: Resource limits for API (prevent resource exhaustion)
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 1G
+        reservations:
+          cpus: '0.5'
+          memory: 512M
 
   # Security Scanner Workers
+  # SECURITY: Immutable infrastructure with read-only filesystem
   worker:
     build:
       context: .
@@ -98,9 +110,28 @@ services:
     restart: unless-stopped
     networks:
       - sentinyl_network
+    # SECURITY: Read-only root filesystem (immutable infrastructure)
+    # Prevents malware persistence and unauthorized file modifications
+    read_only: true
+    # SECURITY: tmpfs for temporary Python processing
+    # Required for Python bytecode compilation and temporary files
+    tmpfs:
+      - /tmp:mode=1777,size=100M
+      - /app/logs:uid=1001,gid=1001,mode=0755,size=50M
+    # SECURITY: Resource quotas (prevent DoS and resource exhaustion)
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'      # Maximum 50% of one CPU core
+          memory: 512M      # Maximum 512MB RAM
+        reservations:
+          cpus: '0.25'     # Guaranteed 25% of one CPU core
+          memory: 256M      # Guaranteed 256MB RAM
     # Scale workers horizontally with: docker-compose up -d --scale worker=3
 
   # Neo4j Graph Database
+  # SECURITY: NO external port mapping in production
+  # For development/debugging, uncomment ports to access browser
   neo4j:
     image: neo4j:5.14-community
     container_name: sentinyl_neo4j
@@ -111,9 +142,11 @@ services:
     volumes:
       - neo4j_data:/data
       - neo4j_logs:/logs
-    ports:
-      - "7474:7474"  # HTTP Browser
-      - "7687:7687"  # Bolt Protocol
+    # REMOVED: ports for production security
+    # For debugging, uncomment:
+    # ports:
+    #   - "7474:7474"  # HTTP Browser
+    #   - "7687:7687"  # Bolt Protocol
     healthcheck:
       test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:7474 || exit 1"]
       interval: 10s

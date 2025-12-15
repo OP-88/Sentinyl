@@ -1,4 +1,5 @@
 # Multi-stage build for Sentinyl Backend API
+# Production-Hardened with Non-Root User
 FROM python:3.11-slim as builder
 
 # Set working directory
@@ -28,15 +29,23 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
+# Create non-root user (SECURITY: Least Privilege)
+RUN groupadd -r appuser && useradd -r -g appuser -u 1001 appuser
+
 # Copy installed packages from builder
 COPY --from=builder /usr/local/lib/python3.11/site-packages /usr/local/lib/python3.11/site-packages
 COPY --from=builder /usr/local/bin /usr/local/bin
 
 # Copy application code
 COPY backend/ /app/backend/
+COPY core/ /app/core/
 
-# Create logs directory
-RUN mkdir -p /app/logs
+# Create logs directory and set ownership
+RUN mkdir -p /app/logs && \
+    chown -R appuser:appuser /app
+
+# Switch to non-root user (SECURITY: Prevent privilege escalation)
+USER appuser
 
 # Expose port
 EXPOSE 8000
