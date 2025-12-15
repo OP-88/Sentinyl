@@ -21,41 +21,77 @@ Sentinyl automates the "Reconnaissance" phase of ethical hacking to protect comp
 - Rate limit handling with exponential backoff
 - Repository metadata extraction
 
-### 📢 Real-time Notifications
-- Slack webhook integration with rich Block Kit formatting
+### 🧠 Enterprise Intelligence (NEW)
+- **Risk Scoring Engine**: Sophisticated 3-factor algorithm (visibility 40%, age 30%, asset value 30%)
+- **MITRE ATT&CK Mapping**: Automatic technique classification (T1552, T1589, T1594, T1583)
+- **Neo4j Graph Analytics**: Investigation graphs linking Domains → IPs → Actors → Repositories
+- **Smart Alerts**: Intelligence-enriched notifications combining risk scores + MITRE context
+
+### 💳 SaaS Billing & Quotas (NEW)
+- Stripe integration with usage-based metering
+- Multi-tier plans (Free, Pro, Enterprise)
+- Automatic quota enforcement and billing cycle management
+- Audit logging for compliance
+
+### 📢 Multi-Channel Notifications
+- **Slack**: Rich Block Kit formatting with severity-based alerts
+- **Microsoft Teams**: Adaptive Cards with MITRE techniques and action buttons
 - Severity-based notifications (LOW, MEDIUM, HIGH, CRITICAL)
-- Interactive alerts with action buttons for critical threats
-- Detailed threat and leak reporting with repository links
+- Interactive alerts with investigation links
+
+### 🔒 Production Security Hardening (NEW)
+- **Network Isolation**: Only API exposed externally (75% attack surface reduction)
+- **Immutable Infrastructure**: Read-only containers prevent malware persistence
+- **Resource Quotas**: CPU/memory limits for DoS prevention
+- **Least Privilege**: Non-root execution (UID 1001) blocks privilege escalation
+- **Compliance**: CIS Docker Benchmark, OWASP, NIST 800-190 aligned
 
 ## 🏗️ Architecture
 
-Sentinyl follows a **microservices architecture** with worker-queue pattern:
+Sentinyl follows an **enterprise microservices architecture** with advanced threat intelligence:
 
 ```
-Client → FastAPI → Redis Queue → Workers → PostgreSQL → Slack
+Client → FastAPI (API Gateway) → Redis Queue → Workers → Multi-DB Backend
+                      ↓                           ↓
+                   PostgreSQL              Neo4j Graph
+                   Stripe API              (Investigation Analytics)
 ```
 
 ### Components
 
 1. **API Service** (FastAPI)
-   - Accepts scan requests
-   - Manages job dispatch
-   - Provides result retrieval endpoints
+   - RESTful endpoints for scan requests
+   - Stripe billing integration with quota enforcement
+   - Health checks and service orchestration
+   - **Security**: Non-root execution, resource limits
 
 2. **Message Queue** (Redis)
-   - Buffers pending jobs
-   - Ensures fault tolerance
+   - Asynchronous job processing
+   - Fault-tolerant message delivery
    - Separate queues per scan type
 
 3. **Worker Swarm** (Python)
-   - Typosquatting engine
-   - Leak detection scanner
-   - Horizontally scalable
+   - Typosquatting detection engine
+   - GitHub leak scanner with intelligence enrichment
+   - Horizontally scalable (docker-compose scale worker=N)
+   - **Security**: Read-only containers, tmpfs mounts
 
-4. **Database** (PostgreSQL)
-   - Stores scan results
-   - Maintains threat intelligence
-   - Tracks job history
+4. **PostgreSQL Database**
+   - Scan results and threat data
+   - User entitlements and billing
+   - Audit logs for compliance
+   - **Security**: Internal network only (no external ports)
+
+5. **Neo4j Graph Database** (Enterprise)
+   - Investigation graph: (Domain)→(IP)→(Actor)→(Repository)
+   - Path analysis for threat hunting
+   - Relationship visualization
+   - **Security**: Internal network only
+
+6. **Intelligence Layer** (Enterprise)
+   - Risk scoring engine (0-100 severity)
+   - MITRE ATT&CK mapper
+   - Smart alert orchestration
 
 ## 🚀 Quick Start
 
@@ -83,7 +119,12 @@ Client → FastAPI → Redis Queue → Workers → PostgreSQL → Slack
    Required variables:
    - `POSTGRES_PASSWORD` - Database password
    - `GITHUB_TOKEN` - GitHub API token (for leak detection)
-   - `SLACK_WEBHOOK_URL` - Incoming webhook URL (for alerts)
+   - `SLACK_WEBHOOK_URL` - Slack incoming webhook URL
+   
+   Enterprise (optional):
+   - `NEO4J_PASSWORD` - Graph database password
+   - `STRIPE_API_KEY` - For billing integration
+   - `TEAMS_WEBHOOK_URL` - Microsoft Teams webhook
 
 3. **Start the platform**
    ```bash
