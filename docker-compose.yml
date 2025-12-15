@@ -50,12 +50,19 @@ services:
     environment:
       DATABASE_URL: postgresql://sentinyl:${POSTGRES_PASSWORD:-sentinyl_secure_pass}@db:5432/sentinyldb
       REDIS_URL: redis://redis:6379/0
+      NEO4J_URI: bolt://neo4j:7687
+      NEO4J_USER: neo4j
+      NEO4J_PASSWORD: ${NEO4J_PASSWORD:-graph_secure_pass}
+      STRIPE_API_KEY: ${STRIPE_API_KEY}
+      TEAMS_WEBHOOK_URL: ${TEAMS_WEBHOOK_URL}
     ports:
       - "8000:8000"
     depends_on:
       db:
         condition: service_healthy
       redis:
+        condition: service_healthy
+      neo4j:
         condition: service_healthy
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
@@ -75,22 +82,56 @@ services:
     environment:
       DATABASE_URL: postgresql://sentinyl:${POSTGRES_PASSWORD:-sentinyl_secure_pass}@db:5432/sentinyldb
       REDIS_URL: redis://redis:6379/0
+      NEO4J_URI: bolt://neo4j:7687
+      NEO4J_USER: neo4j
+      NEO4J_PASSWORD: ${NEO4J_PASSWORD:-graph_secure_pass}
       GITHUB_TOKEN: ${GITHUB_TOKEN}
       SLACK_WEBHOOK_URL: ${SLACK_WEBHOOK_URL}
+      TEAMS_WEBHOOK_URL: ${TEAMS_WEBHOOK_URL}
     depends_on:
       db:
         condition: service_healthy
       redis:
+        condition: service_healthy
+      neo4j:
         condition: service_healthy
     restart: unless-stopped
     networks:
       - sentinyl_network
     # Scale workers horizontally with: docker-compose up -d --scale worker=3
 
+  # Neo4j Graph Database
+  neo4j:
+    image: neo4j:5.14-community
+    container_name: sentinyl_neo4j
+    environment:
+      NEO4J_AUTH: neo4j/${NEO4J_PASSWORD:-graph_secure_pass}
+      NEO4J_PLUGINS: '["apoc"]'
+      NEO4J_dbms_security_procedures_unrestricted: apoc.*
+    volumes:
+      - neo4j_data:/data
+      - neo4j_logs:/logs
+    ports:
+      - "7474:7474"  # HTTP Browser
+      - "7687:7687"  # Bolt Protocol
+    healthcheck:
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:7474 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    restart: unless-stopped
+    networks:
+      - sentinyl_network
+
 volumes:
   postgres_data:
     driver: local
   redis_data:
+    driver: local
+  neo4j_data:
+    driver: local
+  neo4j_logs:
     driver: local
 
 networks:

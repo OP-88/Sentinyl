@@ -64,16 +64,65 @@ CREATE TABLE IF NOT EXISTS github_leaks (
 );
 
 -- Notifications table: Track sent alerts
-CREATE TABLE IF NOT EXISTS notifications (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+CREATE TABLE IF NOT EXISTS notifications (\n    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     threat_id UUID,
     leak_id UUID,
-    notification_type VARCHAR(50), -- slack, email, webhook
+    notification_type VARCHAR(50), -- slack, email, webhook, teams
     recipient VARCHAR(255),
     message TEXT,
     sent_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     status VARCHAR(20) DEFAULT 'sent' -- sent, failed, pending
 );
+
+-- ==========================================
+-- ENTERPRISE TABLES: Billing & Quotas
+-- ==========================================
+
+-- Plans table: Available subscription plans
+CREATE TABLE IF NOT EXISTS plans (
+    id VARCHAR(50) PRIMARY KEY,
+    name VARCHAR(100) NOT NULL,
+    scan_quota INT NOT NULL,
+    price_monthly INT NOT NULL, -- In cents
+    features JSONB,
+    is_active BOOLEAN DEFAULT TRUE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- User entitlements: Track quotas and subscriptions
+CREATE TABLE IF NOT EXISTS user_entitlements (
+    user_id VARCHAR(255) PRIMARY KEY,
+    plan_id VARCHAR(50) REFERENCES plans(id),
+    quota_used INT DEFAULT 0,
+    quota_limit INT NOT NULL,
+    billing_cycle_start TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    billing_cycle_end TIMESTAMP,
+    stripe_customer_id VARCHAR(255),
+    stripe_subscription_id VARCHAR(255),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Audit logs: Track all user actions
+CREATE TABLE IF NOT EXISTS audit_logs (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    user_id VARCHAR(255),
+    action VARCHAR(100) NOT NULL,
+    resource_type VARCHAR(50),
+    resource_id UUID,
+    metadata JSONB,
+    ip_address VARCHAR(45),
+    user_agent TEXT,
+    status VARCHAR(20) DEFAULT 'success', -- success, failure
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Insert default plans
+INSERT INTO plans (id, name, scan_quota, price_monthly, features) VALUES
+('free', 'Free', 10, 0, '["Basic typosquatting", "GitHub leak scanning", "Slack notifications"]'),
+('pro', 'Professional', 100, 4900, '["Advanced typosquatting", "MITRE mapping", "Graph analytics", "Teams notifications", "Risk scoring"]'),
+('enterprise', 'Enterprise', 1000, 19900, '["Unlimited scans", "Real-time monitoring", "Custom integrations", "Priority support", "SLA guarantees"]')
+ON CONFLICT (id) DO NOTHING;
 
 -- Create indexes for performance
 CREATE INDEX IF NOT EXISTS idx_domains_active ON domains(active);
@@ -84,6 +133,9 @@ CREATE INDEX IF NOT EXISTS idx_threats_notified ON threats(notified) WHERE notif
 CREATE INDEX IF NOT EXISTS idx_threats_domain ON threats(malicious_domain);
 CREATE INDEX IF NOT EXISTS idx_leaks_severity ON github_leaks(severity);
 CREATE INDEX IF NOT EXISTS idx_leaks_notified ON github_leaks(notified) WHERE notified = FALSE;
+CREATE INDEX IF NOT EXISTS idx_user_entitlements_plan ON user_entitlements(plan_id);
+CREATE INDEX IF NOT EXISTS idx_audit_logs_user ON audit_logs(user_id);
+CREATE INDEX IF NOT EXISTS idx_audit_logs_created ON audit_logs(created_at DESC);
 
 -- Insert sample domain for testing
 INSERT INTO domains (domain, company_name, priority) 
@@ -101,3 +153,7 @@ $$ language 'plpgsql';
 
 CREATE TRIGGER update_domains_updated_at BEFORE UPDATE ON domains
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+CREATE TRIGGER update_entitlements_updated_at BEFORE UPDATE ON user_entitlements
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
