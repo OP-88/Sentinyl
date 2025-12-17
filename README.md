@@ -74,6 +74,26 @@ Sentinyl combines **external threat detection** (Scout) with **internal infrastr
 - **Least Privilege**: Non-root execution (UID 1001) blocks privilege escalation
 - **Compliance**: CIS Docker Benchmark, OWASP, NIST 800-190 aligned
 
+## 🔐 Authentication & Subscriptions
+
+Sentinyl uses **API key authentication** with modular subscription tiers:
+
+| Tier | Price | Scout Access | Guard Access | Scan Quota | Agent Quota |
+|------|-------|--------------|--------------|------------|-------------|
+| **Free** | $0 | ✅ | ❌ | 5/month | 0 |
+| **Scout Pro** | $49/mo | ✅ | ❌ | Unlimited | 0 |
+| **Guard Lite** | $29/mo | ❌ | ✅ | 0 | 3 agents |
+| **Full Stack** | $99/mo | ✅ | ✅ | Unlimited | Unlimited |
+
+**Security Features**:
+- Bcrypt hashing (12 rounds) for API keys
+- Constant-time comparison to prevent timing attacks
+- Cryptographically secure random key generation
+- Tier-based access control
+- Automatic quota enforcement
+
+---
+
 ## 🏗️ Architecture
 
 Sentinyl follows an **enterprise microservices architecture** with advanced threat intelligence:
@@ -81,10 +101,10 @@ Sentinyl follows an **enterprise microservices architecture** with advanced thre
 ```
 VPS Instances → Sentinyl Guard Agents (Active Defense)
                         ↓
-Client → FastAPI (API Gateway) → Redis Queue → Workers → Multi-DB Backend
-                       ↓                           ↓
-                   PostgreSQL              Neo4j Graph
-                   Stripe API              (Investigation Analytics)
+Client → FastAPI (API Gateway + Auth) → Redis Queue → Workers → Multi-DB Backend
+                       ↓                                ↓
+                   PostgreSQL                    Neo4j Graph
+                   Stripe API                    (Investigation Analytics)
 ```
 
 ### Components
@@ -134,23 +154,32 @@ Client → FastAPI (API Gateway) → Redis Queue → Workers → Multi-DB Backen
 ### Prerequisites
 
 - Docker & Docker Compose
-- Git
-- (Optional) GitHub Personal Access Token
-- (Optional) Slack Webhook URL for alerts
+- Python 3.11+
+- PostgreSQL (or use Docker)
+- Redis (or use Docker)
+- Stripe account (for paid subscriptions - optional)
 
 ### Installation
 
 1. **Clone the repository**
-   ```bash
-   git clone https://github.com/OP-88/Sentinyl.git
-   cd Sentinyl
-   ```
 
-2. **Configure environment variables**
-   ```bash
-   cp .env.example .env
-   nano .env  # Edit with your credentials
-   ```
+```bash
+git clone https://github.com/OP-88/Sentinyl.git
+cd Sentinyl
+```
+
+2. **Configure environment**
+
+```bash
+cp .env.example .env
+# Edit .env with your credentials:
+# - DATABASE_URL
+# - REDIS_URL  
+# - STRIPE_API_KEY (optional)
+# - STRIPE_WEBHOOK_SECRET (optional)
+# - SLACK_WEBHOOK_URL
+# - TEAMS_WEBHOOK_URL
+```
 
    Required variables:
    - `POSTGRES_PASSWORD` - Database password
@@ -162,29 +191,121 @@ Client → FastAPI (API Gateway) → Redis Queue → Workers → Multi-DB Backen
    - `STRIPE_API_KEY` - For billing integration
    - `TEAMS_WEBHOOK_URL` - Microsoft Teams webhook
 
-3. **Start the platform**
-   ```bash
-   docker-compose up -d
-   ```
+3. **Start services with Docker**
 
-4. **Verify services are healthy**
-   ```bash
-   docker-compose ps
-   ```
+```bash
+docker-compose up -d
+```
 
-   All services should show "healthy" status.
+4. **Run database migrations**
 
-5. **Access the API**
-   - API: http://localhost:8000
-   - Documentation: http://localhost:8000/docs
-   - Health Check: http://localhost:8000/health
+```bash
+# Create database tables
+docker-compose exec db psql -U sentinyl -d sentinyldb -f /migrations/001_add_guard_tables.sql
+docker-compose exec db psql -U sentinyl -d sentinyldb -f /migrations/002_add_auth_system.sql
+```
+
+5. **Register your first user**
+
+```bash
+curl -X POST http://localhost:8000/auth/register \
+  -H "Content-Type: application/json" \
+  -d '{"email":"admin@example.com","name":"Admin User"}'
+
+# Save the API key from response (shown only once!)
+export SENTINYL_API_KEY="sk_live_..."
+```
+
+6. **Verify services**
+
+```bash
+curl http://localhost:8000/health
+
+# Test authenticated endpoint
+curl http://localhost:8000/auth/me \
+1.  **Clone the repository**
+
+    ```bash
+    git clone https://github.com/OP-88/Sentinyl.git
+    cd Sentinyl
+    ```
+
+2.  **Configure environment**
+
+    ```bash
+    cp .env.example .env
+    # Edit .env with your credentials:
+    # - DATABASE_URL
+    # - REDIS_URL  
+    # - STRIPE_API_KEY (optional)
+    # - STRIPE_WEBHOOK_SECRET (optional)
+    # - SLACK_WEBHOOK_URL
+    # - TEAMS_WEBHOOK_URL
+    ```
+
+    Required variables:
+    -   `POSTGRES_PASSWORD` - Database password
+    -   `GITHUB_TOKEN` - GitHub API token (for leak detection)
+    -   `SLACK_WEBHOOK_URL` - Slack incoming webhook URL
+
+    Enterprise (optional):
+    -   `NEO4J_PASSWORD` - Graph database password
+    -   `STRIPE_API_KEY` - For billing integration
+    -   `TEAMS_WEBHOOK_URL` - Microsoft Teams webhook
+
+3.  **Start services with Docker**
+
+    ```bash
+    docker-compose up -d
+    ```
+
+4.  **Run database migrations**
+
+    ```bash
+    # Create database tables
+    docker-compose exec db psql -U sentinyl -d sentinyldb -f /migrations/001_add_guard_tables.sql
+    docker-compose exec db psql -U sentinyl -d sentinyldb -f /migrations/002_add_auth_system.sql
+    ```
+
+5.  **Register your first user**
+
+    ```bash
+    curl -X POST http://localhost:8000/auth/register \
+      -H "Content-Type: application/json" \
+      -d '{"email":"admin@example.com","name":"Admin User"}'
+
+    # Save the API key from response (shown only once!)
+    export SENTINYL_API_KEY="sk_live_..."
+    ```
+
+6.  **Verify services**
+
+    ```bash
+    curl http://localhost:8000/health
+
+    # Test authenticated endpoint
+    curl http://localhost:8000/auth/me \
+      -H "Authorization: Bearer $SENTINYL_API_KEY"
+    ```
 
 ## 📖 API Usage
 
-### Initiate a Typosquatting Scan
+### Authentication
+
+All API requests (except `/auth/register` and `/health`) require an API key:
+
+```bash
+curl -H "Authorization: Bearer sk_live_YOUR_KEY" http://localhost:8000/endpoint
+```
+
+### Scout: Create a Scan
+
+**Requires**: Scout tier (Free, Scout Pro, or Full Stack)  
+**Quota**: Enforced automatically
 
 ```bash
 curl -X POST http://localhost:8000/scan \
+  -H "Authorization: Bearer $SENTINYL_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{
     "domain": "example.com",
@@ -193,10 +314,10 @@ curl -X POST http://localhost:8000/scan \
   }'
 ```
 
-**Response:**
+**Response**:
 ```json
 {
-  "job_id": "550e8400-e29b-41d4-a716-446655440000",
+  "job_id": "uuid",
   "domain": "example.com",
   "scan_type": "typosquat",
   "status": "pending",
@@ -204,10 +325,24 @@ curl -X POST http://localhost:8000/scan \
 }
 ```
 
+**Quota Exceeded Response**:
+```json
+{
+  "detail": {
+    "error": "Scan quota exceeded",
+    "quota_used": 5,
+    "quota_limit": 5,
+    "resets_at": "2024-02-01T00:00:00Z",
+    "upgrade_url": "/billing/subscribe?tier=scout_pro"
+  }
+}
+```
+
 ### Initiate a Leak Detection Scan
 
 ```bash
 curl -X POST http://localhost:8000/scan \
+  -H "Authorization: Bearer $SENTINYL_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{
     "domain": "yourcompany.com",
@@ -216,10 +351,31 @@ curl -X POST http://localhost:8000/scan \
   }'
 ```
 
-### Retrieve Scan Results
+### Guard: Register Agent Alert
+
+**Requires**: Guard tier (Guard Lite or Full Stack)  
+**Quota**: Agent limit enforced
 
 ```bash
-curl http://localhost:8000/results/{job_id}
+curl -X POST http://localhost:8000/guard/alert \
+  -H "Authorization: Bearer $SENTINYL_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "agent_id": "agent-prod-01",
+    "hostname": "web-server-01",
+    "anomaly_type": "geo",
+    "severity": "critical",
+    "target_ip": "185.220.101.1",
+    "target_country": "Russia",
+    "details": {}
+  }'
+```
+
+### Check Job Status
+
+```bash
+curl http://localhost:8000/results/{job_id} \
+  -H "Authorization: Bearer $SENTINYL_API_KEY"
 ```
 
 **Response:**
@@ -247,7 +403,8 @@ curl http://localhost:8000/results/{job_id}
 ### Platform Statistics
 
 ```bash
-curl http://localhost:8000/stats
+curl http://localhost:8000/stats \
+  -H "Authorization: Bearer $SENTINYL_API_KEY"
 ```
 
 ## 🔧 Configuration
