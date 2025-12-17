@@ -21,6 +21,10 @@ class Settings(BaseSettings):
     # GitHub API
     GITHUB_TOKEN: Optional[str] = None
     
+    # Stripe Integration
+    STRIPE_API_KEY: Optional[str] = None
+    STRIPE_WEBHOOK_SECRET: Optional[str] = None
+    
     # Application Settings
     APP_NAME: str = "Sentinyl"
     APP_VERSION: str = "1.0.0"

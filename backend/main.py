@@ -16,11 +16,21 @@ from backend.config import settings
 from backend.database import get_db, engine
 from backend.models import (
     Base, Domain, ScanJob, Threat, GitHubLeak,
-    GuardAgent, GuardEvent,
+    GuardAgent, GuardEvent, User, APIKey, Subscription,
     ScanRequest, ScanResponse, JobStatus, ScanType,
     ThreatResult, LeakResult,
-    GuardAlertRequest, AdminResponseRequest, GuardEventStatus, AnomalyType
+    GuardAlertRequest, AdminResponseRequest, GuardEventStatus, AnomalyType,
+    UserRegisterRequest, UserRegisterResponse,
+    APIKeyCreateRequest, APIKeyResponse, APIKeyListItem,
+    SubscriptionResponse, BillingCheckoutRequest
 )
+from backend import auth
+from backend.auth import (
+    generate_api_key, get_current_user, get_user_subscription,
+    RequiresScout, RequiresGuard, check_scan_quota, check_agent_quota, TIERS
+)
+from backend import stripe_billing
+import stripe
 
 # Initialize FastAPI app
 app = FastAPI(
@@ -120,6 +130,8 @@ async def health_check() -> Dict[str, Any]:
 @app.post("/scan", response_model=ScanResponse, status_code=status.HTTP_202_ACCEPTED)
 async def create_scan(
     scan_request: ScanRequest,
+    user: User = Depends(RequiresScout),  # Tier check: Scout access required
+    _: User = Depends(check_scan_quota),  # Quota check and increment
     db: Session = Depends(get_db)
 ) -> ScanResponse:
     """
@@ -145,6 +157,7 @@ async def create_scan(
         domain_record = db.query(Domain).filter(Domain.domain == domain).first()
         if not domain_record:
             domain_record = Domain(
+                user_id=user.id,
                 domain=domain,
                 priority=scan_request.priority.value
             )
@@ -285,6 +298,8 @@ async def get_scan_results(
 @app.post("/guard/alert", status_code=status.HTTP_202_ACCEPTED)
 async def receive_guard_alert(
     alert: GuardAlertRequest,
+    user: User = Depends(RequiresGuard),  # Tier check: Guard access required
+    _: User = Depends(check_agent_quota),  # Quota check
     db: Session = Depends(get_db)
 ) -> Dict[str, Any]:
     """
@@ -293,13 +308,17 @@ async def receive_guard_alert(
     Creates a GuardEvent and pushes to Redis queue for worker processing
     """
     try:
-        # Get or create agent
+        # Register/update agent
         agent = db.query(GuardAgent).filter(GuardAgent.id == alert.agent_id).first()
         if not agent:
             agent = GuardAgent(
                 id=alert.agent_id,
+                user_id=user.id,  # Link to authenticated user
                 hostname=alert.hostname,
-                last_heartbeat=datetime.utcnow()
+                ip_address=alert.details.get("ip_address"),
+                os_info=alert.details.get("os_info"),
+                last_heartbeat=datetime.utcnow(),
+                active=True
             )
             db.add(agent)
             db.commit()
@@ -504,6 +523,206 @@ async def get_guard_status(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to get status: {str(e)}"
         )
+
+
+# ========== Authentication Endpoints ==========
+
+@app.post("/auth/register", response_model=UserRegisterResponse)
+async def register_user(
+    request: UserRegisterRequest,
+    db: Session = Depends(get_db)
+) -> UserRegisterResponse:
+    """
+    Register new user with free tier
+    
+    Returns API key (shown only once!)
+    """
+    try:
+        # Check if email already exists
+        existing = db.query(User).filter(User.email == request.email).first()
+        if existing:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Email already registered"
+            )
+        
+        # Create user
+        user = User(email=request.email, name=request.name)
+        db.add(user)
+        db.flush()
+        
+        # Create default subscription (free tier)
+        from datetime import timedelta
+        subscription = Subscription(
+            user_id=user.id,
+            tier="free",
+            scan_quota=TIERS["free"]["scan_quota"],
+            agent_quota=TIERS["free"]["agent_quota"],
+            scan_used=0,
+            agent_used=0,
+            billing_cycle_start=datetime.utcnow(),
+            billing_cycle_end=datetime.utcnow() + timedelta(days=30)
+        )
+        db.add(subscription)
+        
+        # Generate API key
+        plain_key, hashed_key = generate_api_key()
+        api_key_record = APIKey(
+            user_id=user.id,
+            key_hash=hashed_key,
+            key_prefix=plain_key[:8],
+            name="Default"
+        )
+        db.add(api_key_record)
+        
+        db.commit()
+        
+        logger.info(f"New user registered: {user.email}")
+        
+        return UserRegisterResponse(
+            user_id=str(user.id),
+            email=user.email,
+            name=user.name,
+            api_key=plain_key,
+            tier="free"
+        )
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Registration error: {str(e)}")
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Registration failed"
+        )
+
+
+@app.get("/auth/me", response_model=SubscriptionResponse)
+async def get_current_user_info(
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+) -> SubscriptionResponse:
+    """Get current user's subscription details"""
+    subscription = get_user_subscription(user, db)
+    
+    return SubscriptionResponse(
+        tier=subscription.tier,
+        status=subscription.status,
+        scan_quota=subscription.scan_quota,
+        agent_quota=subscription.agent_quota,
+        scan_used=subscription.scan_used,
+        agent_used=subscription.agent_used,
+        billing_cycle_end=subscription.billing_cycle_end
+    )
+
+
+@app.post("/auth/keys", response_model=APIKeyResponse)
+async def create_api_key(
+    request: APIKeyCreateRequest,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+) -> APIKeyResponse:
+    """Create new API key for current user"""
+    plain_key, hashed_key = generate_api_key()
+    
+    api_key = APIKey(
+        user_id=user.id,
+        key_hash=hashed_key,
+        key_prefix=plain_key[:8],
+        name=request.name
+    )
+    db.add(api_key)
+    db.commit()
+    db.refresh(api_key)
+    
+    logger.info(f"New API key created for user {user.email}: {request.name}")
+    
+    return APIKeyResponse(
+        api_key=plain_key,
+        prefix=plain_key[:8],
+        name=request.name,
+        created_at=api_key.created_at
+    )
+
+
+@app.get("/auth/keys", response_model=list[APIKeyListItem])
+async def list_api_keys(
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+) -> list[APIKeyListItem]:
+    """List user's API keys (without showing full keys)"""
+    keys = db.query(APIKey).filter(APIKey.user_id == user.id).all()
+    
+    return [
+        APIKeyListItem(
+            id=str(key.id),
+            prefix=key.key_prefix,
+            name=key.name,
+            last_used_at=key.last_used_at,
+            created_at=key.created_at,
+            revoked=key.revoked
+        )
+        for key in keys
+    ]
+
+
+@app.delete("/auth/keys/{key_id}")
+async def revoke_api_key(
+    key_id: str,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+) -> Dict[str, str]:
+    """Revoke an API key"""
+    try:
+        key_uuid = uuid.UUID(key_id)
+    except ValueError:
+        raise HTTPException(400, "Invalid key ID")
+    
+    key = db.query(APIKey).filter(
+        APIKey.id == key_uuid,
+        APIKey.user_id == user.id
+    ).first()
+    
+    if not key:
+        raise HTTPException(404, "API key not found")
+    
+    key.revoked = True
+    db.commit()
+    
+    logger.info(f"API key revoked: {key.name} ({key.key_prefix})")
+    
+    return {"message": "API key revoked successfully"}
+
+
+# ========== Billing Endpoints ==========
+
+@app.post("/billing/subscribe")
+async def create_subscription(
+    request: BillingCheckoutRequest,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+) -> Dict[str, str]:
+    """Create Stripe checkout session for subscription upgrade"""
+    checkout_url = await stripe_billing.create_checkout_session(
+        user=user,
+        tier=request.tier,
+        db=db
+    )
+    
+    return {"checkout_url": checkout_url}
+
+
+@app.post("/billing/webhook")
+async def stripe_webhook(
+    request: Request,
+    db: Session = Depends(get_db)
+) -> Dict[str, Any]:
+    """Handle Stripe webhook events (subscription updates, payments)"""
+    payload = await request.body()
+    sig_header = request.headers.get("stripe-signature")
+    
+    return await stripe_billing.handle_webhook_event(payload, sig_header, db)
 
 
 @app.get("/stats")

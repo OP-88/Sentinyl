@@ -4,7 +4,7 @@ Database models and Pydantic schemas for Sentinyl
 from datetime import datetime
 from typing import Optional, List
 from enum import Enum
-from sqlalchemy import Column, String, Boolean, DateTime, Text, ForeignKey, ARRAY
+from sqlalchemy import Column, String, Boolean, DateTime, Text, ForeignKey, ARRAY, Integer
 from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.orm import relationship
 from pydantic import BaseModel, Field
@@ -20,6 +20,7 @@ class Domain(Base):
     __tablename__ = "domains"
     
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"))
     domain = Column(String(255), unique=True, nullable=False, index=True)
     company_name = Column(String(255))
     priority = Column(String(20), default="medium")
@@ -27,6 +28,7 @@ class Domain(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     
+    user = relationship("User", back_populates="domains")
     scan_jobs = relationship("ScanJob", back_populates="domain")
 
 
@@ -97,6 +99,7 @@ class GuardAgent(Base):
     __tablename__ = "guard_agents"
     
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"))
     hostname = Column(String(255), nullable=False)
     ip_address = Column(String(45))
     os_info = Column(String(255))
@@ -104,7 +107,70 @@ class GuardAgent(Base):
     active = Column(Boolean, default=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     
+    user = relationship("User", back_populates="guard_agents")
     events = relationship("GuardEvent", back_populates="agent")
+
+
+class User(Base):
+    """User account"""
+    __tablename__ = "users"
+    
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    email = Column(String(255), unique=True, nullable=False, index=True)
+    name = Column(String(255))
+    stripe_customer_id = Column(String(255))
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    
+    api_keys = relationship("APIKey", back_populates="user")
+    subscription = relationship("Subscription", back_populates="user", uselist=False)
+    guard_agents = relationship("GuardAgent", back_populates="user")
+    domains = relationship("Domain", back_populates="user")
+
+
+class APIKey(Base):
+    """API key for authentication"""
+    __tablename__ = "api_keys"
+    
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"))
+    key_hash = Column(String(255), unique=True, nullable=False, index=True)
+    key_prefix = Column(String(10), nullable=False)
+    name = Column(String(100))
+    last_used_at = Column(DateTime)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    revoked = Column(Boolean, default=False, index=True)
+    
+    user = relationship("User", back_populates="api_keys")
+
+
+class Subscription(Base):
+    """User subscription and quotas"""
+    __tablename__ = "subscriptions"
+    
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"))
+    tier = Column(String(50), nullable=False)  # free, scout_pro, guard_lite, full_stack
+    status = Column(String(20), default="active")  # active, canceled, past_due
+    
+    # Quotas (0 = unlimited)
+    scan_quota = Column(Integer, default=0)
+    agent_quota = Column(Integer, default=0)
+    scan_used = Column(Integer, default=0)
+    agent_used = Column(Integer, default=0)
+    
+    # Billing cycle
+    billing_cycle_start = Column(DateTime)
+    billing_cycle_end = Column(DateTime)
+    
+    # Stripe integration
+    stripe_subscription_id = Column(String(255))
+    stripe_price_id = Column(String(255))
+    
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    
+    user = relationship("User", back_populates="subscription")
 
 
 class GuardEvent(Base):
@@ -247,3 +313,69 @@ class GuardEventStatus(BaseModel):
     
     class Config:
         from_attributes = True
+
+
+# ========== Authentication Schemas ==========
+
+class UserRegisterRequest(BaseModel):
+    """User registration request"""
+    email: str = Field(..., description="User email address")
+    name: str = Field(..., description="User full name")
+
+
+class UserRegisterResponse(BaseModel):
+    """User registration response"""
+    user_id: str
+    email: str
+    name: str
+    api_key: str  # Shown only once
+    tier: str
+    
+    class Config:
+        from_attributes = True
+
+
+class APIKeyCreateRequest(BaseModel):
+    """API key creation request"""
+    name: str = Field(..., description="Friendly name for the API key", max_length=100)
+
+
+class APIKeyResponse(BaseModel):
+    """API key response (shown only once)"""
+    api_key: str
+    prefix: str
+    name: str
+    created_at: datetime
+
+
+class APIKeyListItem(BaseModel):
+    """API key list item (without full key)"""
+    id: str
+    prefix: str
+    name: Optional[str]
+    last_used_at: Optional[datetime]
+    created_at: datetime
+    revoked: bool
+    
+    class Config:
+        from_attributes = True
+
+
+class SubscriptionResponse(BaseModel):
+    """User subscription details"""
+    tier: str
+    status: str
+    scan_quota: int
+    agent_quota: int
+    scan_used: int
+    agent_used: int
+    billing_cycle_end: datetime
+    
+    class Config:
+        from_attributes = True
+
+
+class BillingCheckoutRequest(BaseModel):
+    """Billing checkout request"""
+    tier: str = Field(..., description="Subscription tier to purchase")
+
