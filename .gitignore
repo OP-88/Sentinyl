@@ -3,6 +3,22 @@ __pycache__/
 *.py[cod]
 *$py.class
 *.so
+.# ========================================
+# Environment Variables & Secrets (CRITICAL!)
+# ========================================
+.env
+.env.local
+.env.*.local
+*.env
+secrets/
+
+# API Keys (never commit these!)
+stripe_*
+github_token*
+webhook_*
+*.pem
+*.key
+
 .Python
 
 # Distribution / packaging
