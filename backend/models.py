@@ -92,6 +92,44 @@ class GitHubLeak(Base):
     job = relationship("ScanJob", back_populates="leaks")
 
 
+class GuardAgent(Base):
+    """VPS agent registration for Sentinyl Guard"""
+    __tablename__ = "guard_agents"
+    
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    hostname = Column(String(255), nullable=False)
+    ip_address = Column(String(45))
+    os_info = Column(String(255))
+    last_heartbeat = Column(DateTime)
+    active = Column(Boolean, default=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    
+    events = relationship("GuardEvent", back_populates="agent")
+
+
+class GuardEvent(Base):
+    """Behavioral anomaly event from Sentinyl Guard agent"""
+    __tablename__ = "guard_events"
+    
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    agent_id = Column(UUID(as_uuid=True), ForeignKey("guard_agents.id", ondelete="CASCADE"))
+    anomaly_type = Column(String(50), nullable=False)  # geo, process, resource
+    severity = Column(String(20), default="high")
+    target_ip = Column(String(45))
+    target_country = Column(String(100))
+    process_name = Column(String(255))
+    details = Column(JSONB)
+    countdown_started_at = Column(DateTime)
+    countdown_expires_at = Column(DateTime)
+    admin_response = Column(String(20))  # safe, block, null
+    admin_user = Column(String(255))
+    responded_at = Column(DateTime)
+    blocked = Column(Boolean, default=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    
+    agent = relationship("GuardAgent", back_populates="events")
+
+
 # ========== Pydantic Schemas ==========
 
 class ScanType(str, Enum):
@@ -99,6 +137,13 @@ class ScanType(str, Enum):
     TYPOSQUAT = "typosquat"
     LEAK = "leak"
     PHISHING = "phishing"
+
+
+class AnomalyType(str, Enum):
+    """Types of behavioral anomalies"""
+    GEO = "geo"
+    PROCESS = "process"
+    RESOURCE = "resource"
 
 
 class SeverityLevel(str, Enum):
@@ -167,6 +212,38 @@ class JobStatus(BaseModel):
     threats: Optional[List[ThreatResult]] = []
     leaks: Optional[List[LeakResult]] = []
     error_message: Optional[str]
+    
+    class Config:
+        from_attributes = True
+
+
+class GuardAlertRequest(BaseModel):
+    """Request from agent reporting behavioral anomaly"""
+    agent_id: str = Field(..., description="Unique agent identifier")
+    hostname: str = Field(..., description="VPS hostname")
+    anomaly_type: AnomalyType = Field(..., description="Type of anomaly detected")
+    severity: SeverityLevel = Field(..., description="Severity level")
+    target_ip: Optional[str] = Field(None, description="Target IP address (for geo/network anomalies)")
+    target_country: Optional[str] = Field(None, description="Target country (from geo lookup)")
+    process_name: Optional[str] = Field(None, description="Suspicious process name")
+    details: Dict[str, Any] = Field(default_factory=dict, description="Additional anomaly details")
+
+
+class AdminResponseRequest(BaseModel):
+    """Admin response to guard alert"""
+    event_id: str = Field(..., description="Guard event UUID")
+    response: str = Field(..., description="Admin decision: 'safe' or 'block'")
+    admin_user: str = Field(..., description="Admin username/email")
+
+
+class GuardEventStatus(BaseModel):
+    """Guard event status for agent polling"""
+    event_id: str
+    anomaly_type: str
+    severity: str
+    admin_response: Optional[str] = None
+    countdown_remaining: Optional[int] = None  # seconds
+    should_block: bool = False
     
     class Config:
         from_attributes = True

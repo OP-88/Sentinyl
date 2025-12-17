@@ -1,12 +1,18 @@
 # Sentinyl 🛡️
 
-**B2B Digital Risk Protection & External Attack Surface Management Platform**
+**Modular B2B Digital Risk Protection & Infrastructure Defense Platform**
 
-Sentinyl automates the "Reconnaissance" phase of ethical hacking to protect companies from external threats. Built on the Builder/Breaker philosophy, it uses software engineering principles to execute offensive security tasks at scale.
+Sentinyl combines **external threat detection** (Scout) with **internal infrastructure protection** (Guard) in a composable architecture. Buy what you need, scale as you grow.
+
+**Sentinyl Scout** automates the "Reconnaissance" phase of ethical hacking to protect companies from external threats. **Sentinyl Guard** (optional) provides "EDR Lite" for VPS infrastructure - enterprise-grade behavioral detection without enterprise complexity.
 
 ## 🎯 Features
 
-### 🌐 Typosquatting Detection
+### 🔭 Sentinyl Scout (Core Module - External Threats)
+
+**Zero-installation SaaS for brand protection and external attack surface monitoring.**
+
+#### 🌐 Typosquatting Detection
 - Generates 50+ domain variations using DNSTwist-like permutation logic
 - Character omission, repetition, transposition
 - Homoglyph substitution and keyboard typo simulation
@@ -33,6 +39,28 @@ Sentinyl automates the "Reconnaissance" phase of ethical hacking to protect comp
 - Automatic quota enforcement and billing cycle management
 - Audit logging for compliance
 
+---
+
+### 🛡️ Sentinyl Guard (Optional Module - Internal Defense)
+
+**Lightweight agent for VPS infrastructure protection. "EDR Lite" for the mid-market gap.**
+
+**Target Audience**: VPS users, dev agencies, SaaS startups who can't afford enterprise EDR ($50-100/endpoint) but need more than basic monitoring.
+
+#### Active Defense Capabilities
+- **Host-based Behavioral Detection**: Python agent monitors VPS instances for anomalies
+- **Geo-Anomaly Detection**: Flags connections to hostile countries (Russia, China, North Korea, etc.)
+- **Process Anomaly Detection**: Detects reverse shells (e.g., `node` spawning `/bin/sh`)
+- **Resource Anomaly Detection**: Identifies crypto-mining via CPU abuse patterns
+- **Dead Man's Switch**: 5-minute countdown with auto-block if admin doesn't respond
+- **iptables Integration**: Automatically severs suspicious network connections
+- **Interactive Alerts**: Admin can override via Teams/Slack action buttons
+
+**[→ Read the Guard technical guide](SENTINYL_GUARD.md)**  
+**[→ Understand the modular architecture](ARCHITECTURE.md)**
+
+---
+
 ### 📢 Multi-Channel Notifications
 - **Slack**: Rich Block Kit formatting with severity-based alerts
 - **Microsoft Teams**: Adaptive Cards with MITRE techniques and action buttons
@@ -51,8 +79,10 @@ Sentinyl automates the "Reconnaissance" phase of ethical hacking to protect comp
 Sentinyl follows an **enterprise microservices architecture** with advanced threat intelligence:
 
 ```
+VPS Instances → Sentinyl Guard Agents (Active Defense)
+                        ↓
 Client → FastAPI (API Gateway) → Redis Queue → Workers → Multi-DB Backend
-                      ↓                           ↓
+                       ↓                           ↓
                    PostgreSQL              Neo4j Graph
                    Stripe API              (Investigation Analytics)
 ```
@@ -92,6 +122,12 @@ Client → FastAPI (API Gateway) → Redis Queue → Workers → Multi-DB Backen
    - Risk scoring engine (0-100 severity)
    - MITRE ATT&CK mapper
    - Smart alert orchestration
+
+7. **Sentinyl Guard Agent** (Active Defense)
+    - Host-based behavioral monitoring
+    - Dead Man's Switch logic
+    - Automated iptables blocking
+    - **Security**: Minimal privileges (CAP_NET_ADMIN only)
 
 ## 🚀 Quick Start
 

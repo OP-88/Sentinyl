@@ -16,8 +16,10 @@ from backend.config import settings
 from backend.database import get_db, engine
 from backend.models import (
     Base, Domain, ScanJob, Threat, GitHubLeak,
+    GuardAgent, GuardEvent,
     ScanRequest, ScanResponse, JobStatus, ScanType,
-    ThreatResult, LeakResult
+    ThreatResult, LeakResult,
+    GuardAlertRequest, AdminResponseRequest, GuardEventStatus, AnomalyType
 )
 
 # Initialize FastAPI app
@@ -275,6 +277,232 @@ async def get_scan_results(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to retrieve results: {str(e)}"
+        )
+
+
+
+
+@app.post("/guard/alert", status_code=status.HTTP_202_ACCEPTED)
+async def receive_guard_alert(
+    alert: GuardAlertRequest,
+    db: Session = Depends(get_db)
+) -> Dict[str, Any]:
+    """
+    Receive behavioral anomaly alert from Sentinyl Guard agent
+    
+    Creates a GuardEvent and pushes to Redis queue for worker processing
+    """
+    try:
+        # Get or create agent
+        agent = db.query(GuardAgent).filter(GuardAgent.id == alert.agent_id).first()
+        if not agent:
+            agent = GuardAgent(
+                id=alert.agent_id,
+                hostname=alert.hostname,
+                last_heartbeat=datetime.utcnow()
+            )
+            db.add(agent)
+            db.commit()
+            db.refresh(agent)
+            logger.info(f"Registered new guard agent: {alert.agent_id} ({alert.hostname})")
+        else:
+            # Update heartbeat
+            agent.last_heartbeat = datetime.utcnow()
+            db.commit()
+        
+        # Create guard event with countdown timer
+        countdown_start = datetime.utcnow()
+        countdown_expires = datetime.fromtimestamp(countdown_start.timestamp() + 300)  # 5 minutes
+        
+        event = GuardEvent(
+            agent_id=alert.agent_id,
+            anomaly_type=alert.anomaly_type.value,
+            severity=alert.severity.value,
+            target_ip=alert.target_ip,
+            target_country=alert.target_country,
+            process_name=alert.process_name,
+            details=alert.details,
+            countdown_started_at=countdown_start,
+            countdown_expires_at=countdown_expires
+        )
+        db.add(event)
+        db.commit()
+        db.refresh(event)
+        
+        event_id = str(event.id)
+        logger.warning(
+            f"Guard anomaly detected: {alert.anomaly_type.value} from {alert.hostname} "
+            f"(severity: {alert.severity.value}, target: {alert.target_ip or 'N/A'})"
+        )
+        
+        # Push to Redis queue for smart alert processing
+        queue_name = "queue:guard"
+        job_payload = {
+            "event_id": event_id,
+            "agent_id": alert.agent_id,
+            "hostname": alert.hostname,
+            "anomaly_type": alert.anomaly_type.value,
+            "severity": alert.severity.value,
+            "target_ip": alert.target_ip,
+            "target_country": alert.target_country,
+            "process_name": alert.process_name,
+            "details": alert.details,
+            "countdown_expires_at": countdown_expires.isoformat(),
+            "created_at": datetime.utcnow().isoformat()
+        }
+        
+        redis_client.lpush(queue_name, json.dumps(job_payload))
+        logger.info(f"Pushed guard event {event_id} to queue: {queue_name}")
+        
+        return {
+            "event_id": event_id,
+            "status": "pending",
+            "countdown_seconds": 300,
+            "message": "Alert received and queued for processing"
+        }
+        
+    except Exception as e:
+        logger.error(f"Error receiving guard alert: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to process alert: {str(e)}"
+        )
+
+
+@app.post("/guard/response")
+async def receive_admin_response(
+    response: AdminResponseRequest,
+    db: Session = Depends(get_db)
+) -> Dict[str, str]:
+    """
+    Receive admin response from Teams/Slack interactive button
+    
+    Updates GuardEvent with admin decision (safe/block)
+    """
+    try:
+        # Validate UUID format
+        try:
+            uuid.UUID(response.event_id)
+        except ValueError:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid event_id format"
+            )
+        
+        # Validate response value
+        if response.response not in ["safe", "block"]:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Response must be 'safe' or 'block'"
+            )
+        
+        # Update event
+        event = db.query(GuardEvent).filter(GuardEvent.id == response.event_id).first()
+        if not event:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Event not found"
+            )
+        
+        event.admin_response = response.response
+        event.admin_user = response.admin_user
+        event.responded_at = datetime.utcnow()
+        
+        # If admin chose to block, mark as blocked
+        if response.response == "block":
+            event.blocked = True
+        
+        db.commit()
+        
+        logger.info(
+            f"Admin response received for event {response.event_id}: "
+            f"{response.response} by {response.admin_user}"
+        )
+        
+        return {
+            "status": "success",
+            "message": f"Response '{response.response}' recorded"
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error processing admin response: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to process response: {str(e)}"
+        )
+
+
+@app.get("/guard/status/{agent_id}")
+async def get_guard_status(
+    agent_id: str,
+    db: Session = Depends(get_db)
+) -> Dict[str, Any]:
+    """
+    Agent polls for admin override commands
+    
+    Returns pending GuardEvents for this agent with admin decisions
+    """
+    try:
+        # Validate UUID format
+        try:
+            uuid.UUID(agent_id)
+        except ValueError:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid agent_id format"
+            )
+        
+        # Get pending events (not yet responded or within countdown window)
+        events = db.query(GuardEvent).filter(
+            GuardEvent.agent_id == agent_id,
+            GuardEvent.countdown_expires_at > datetime.utcnow()
+        ).order_by(GuardEvent.created_at.desc()).all()
+        
+        event_statuses = []
+        for event in events:
+            # Calculate countdown remaining
+            countdown_remaining = int(
+                (event.countdown_expires_at - datetime.utcnow()).total_seconds()
+            )
+            countdown_remaining = max(0, countdown_remaining)
+            
+            # Determine if should block
+            should_block = False
+            if event.admin_response == "block":
+                should_block = True
+            elif event.admin_response is None and countdown_remaining == 0:
+                # Countdown expired, no response = auto-block
+                should_block = True
+                # Update event to mark as blocked
+                event.blocked = True
+                db.commit()
+            
+            event_statuses.append(
+                GuardEventStatus(
+                    event_id=str(event.id),
+                    anomaly_type=event.anomaly_type,
+                    severity=event.severity,
+                    admin_response=event.admin_response,
+                    countdown_remaining=countdown_remaining,
+                    should_block=should_block
+                )
+            )
+        
+        return {
+            "agent_id": agent_id,
+            "pending_events": len(event_statuses),
+            "events": [e.dict() for e in event_statuses]
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting guard status: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to get status: {str(e)}"
         )
 
 
