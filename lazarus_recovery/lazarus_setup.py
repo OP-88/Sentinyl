@@ -22,7 +22,7 @@ import argparse
 from pathlib import Path
 
 try:
-    from shamirs import shares
+    from shamirs import shares, interpolate
 except ImportError:
     print("ERROR: shamirs module not installed. Run: pip install shamirs", file=sys.stderr)
     sys.exit(1)
@@ -74,17 +74,21 @@ class LazarusSetup:
         Split Master Key into Shamir shards (3-of-5)
         
         Returns:
-            list: Shard hex strings
+            list: Shard base64 strings
         """
-        # Convert master key to hex string for Shamir library
-        master_hex = self.master_key.hex()
+        # Convert master key bytes to integer
+        master_int = int.from_bytes(self.master_key, byteorder='big')
         
         # Split into shards (threshold=3, total=5)
-        self.shards = shares.split_secret(
-            master_hex,
-            self.THRESHOLD,
-            self.TOTAL_SHARDS
+        shard_objects = shares(
+            master_int,
+            quantity=self.TOTAL_SHARDS,
+            threshold=self.THRESHOLD,
+            modulus=2**257 - 93,
         )
+        
+        # Convert share objects to base64 strings for easy storage/transmission
+        self.shards = [s.to_base64() for s in shard_objects]
         
         print(f"[*] Split key into {self.TOTAL_SHARDS} shards (threshold: {self.THRESHOLD})")
         

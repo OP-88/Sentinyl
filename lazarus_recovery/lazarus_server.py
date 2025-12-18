@@ -35,7 +35,7 @@ except ImportError:
     sys.exit(1)
 
 try:
-    from shamirs import shares
+    from shamirs import share, interpolate
 except ImportError:
     print("ERROR: shamirs module not installed. Run: pip install shamirs", file=sys.stderr)
     sys.exit(1)
@@ -209,9 +209,9 @@ def sanitize_shard(shard_input):
     # Trim whitespace
     shard_input = shard_input.strip()
     
-    # Validate: shamirs library shards are in format "<index>-<hex>"
-    # Example: "1-a3f2b9c..."
-    pattern = r'^[1-5]-[0-9a-fA-F]+$'
+    # Validate: shamirs library shards are in base64 format
+    # Example: "ewAAAAIAAADIAf0D"
+    pattern = r'^[A-Za-z0-9+/]+=*$'
     
     if not re.match(pattern, shard_input):
         return None
@@ -224,15 +224,22 @@ def reconstruct_key(shards_list):
     Reconstruct Master Key from shards
     
     Args:
-        shards_list: List of 3 shard strings
+        shards_list: List of 3 shard base64 strings
         
     Returns:
-        str: Reconstructed key (hex) or None if invalid
+        bytes: Reconstructed key or None if invalid
     """
     try:
-        # Combine shards to reconstruct secret
-        reconstructed_hex = shares.recover_secret(shards_list)
-        return reconstructed_hex
+        # Convert base64 strings back to share objects
+        shard_objects = [share.from_base64(s) for s in shards_list]
+        
+        # Interpolate to recover the secret integer
+        reconstructed_int = interpolate(shard_objects)
+        
+        # Convert integer back to 32-byte key
+        reconstructed_bytes = reconstructed_int.to_bytes(32, byteorder='big')
+        
+        return reconstructed_bytes
         
     except Exception as e:
         # Invalid shards (wrong format or insufficient)
@@ -365,9 +372,9 @@ def recover():
         
         # Reconstruct key
         print("[*] Reconstructing key from shards...")
-        reconstructed_hex = reconstruct_key([shard1, shard2, shard3])
+        reconstructed_bytes = reconstruct_key([shard1, shard2, shard3])
         
-        if not reconstructed_hex:
+        if not reconstructed_bytes:
             LazarusState.failed_attempts += 1
             print(f"[!] Key reconstruction failed. Attempts: {LazarusState.failed_attempts}/{LazarusState.MAX_ATTEMPTS}")
             
@@ -386,8 +393,8 @@ def recover():
                 "message": f"INVALID SHARDS. {remaining} attempts remaining."
             }), 400
         
-        # Hash the reconstructed key
-        reconstructed_hash = hashlib.sha256(bytes.fromhex(reconstructed_hex)).hexdigest()
+        # Hash the reconstructed key (now bytes, not hex)
+        reconstructed_hash = hashlib.sha256(reconstructed_bytes).hexdigest()
         
         # CONSTANT-TIME COMPARISON (prevents timing attacks)
         if secrets.compare_digest(reconstructed_hash, LazarusState.master_hash):
