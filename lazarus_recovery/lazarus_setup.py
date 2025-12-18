@@ -6,7 +6,8 @@ Generates the Master Key, splits it into Shamir shards, and creates Tor auth key
 This is a ONE-TIME setup script. Store the shards securely offline.
 
 Usage:
-    python lazarus_setup.py
+    python lazarus_setup.py                    # Interactive mode (prints to screen)
+    python lazarus_setup.py --save-keys        # Headless mode (saves to files)
 
 Security:
     - Master Key is NEVER saved (only its hash)
@@ -17,6 +18,7 @@ import os
 import sys
 import secrets
 import hashlib
+import argparse
 from pathlib import Path
 
 try:
@@ -217,10 +219,58 @@ class LazarusSetup:
         print()
         print("=" * 70)
         print()
+    
+    def save_keys_to_files(self, private_key, public_key):
+        """
+        Save keys to files for automated installer (headless mode)
+        
+        Args:
+            private_key: x25519 private key bytes
+            public_key: x25519 public key bytes
+        """
+        import base64
+        
+        # Encode keys in base32 (Tor format)
+        private_b32 = base64.b32encode(private_key).decode('ascii').strip('=')
+        public_b32 = base64.b32encode(public_key).decode('ascii').strip('=')
+        
+        # Save server auth file (for Tor authorized_clients)
+        with open('generated_admin.auth', 'w') as f:
+            f.write(f"descriptor:x25519:{public_b32}\n")
+        os.chmod('generated_admin.auth', 0o600)
+        
+        # Save client private key
+        with open('generated_client_private.key', 'w') as f:
+            f.write(f"{private_b32}\n")
+        os.chmod('generated_client_private.key', 0o600)
+        
+        # Save shards
+        with open('shards.txt', 'w') as f:
+            for i, shard in enumerate(self.shards, 1):
+                f.write(f"SHARD #{i}: {shard}\n")
+        os.chmod('shards.txt', 0o600)
+        
+        print("[*] Keys saved to:")
+        print("    - generated_admin.auth")
+        print("    - generated_client_private.key")
+        print("    - shards.txt")
 
 
 def main():
     """Main entry point"""
+    parser = argparse.ArgumentParser(
+        description="Lazarus Recovery - Setup & Key Generation",
+        formatter_class=argparse.RawDescriptionHelpFormatter
+    )
+    
+    parser.add_argument(
+        '--save-keys',
+        action='store_true',
+        help='Headless mode: Save keys to files instead of printing (for automated installer)'
+    )
+    
+    args = parser.parse_args()
+    
     print("=" * 70)
     print("Lazarus Recovery - Setup & Key Generation")
     print("=" * 70)
@@ -249,32 +299,43 @@ def main():
     print("[*] Generated x25519 keypair for Tor")
     print()
     
-    # Step 5: Print everything
-    print("[5/5] Displaying shards and instructions...")
+    # Step 5: Output (file or screen)
+    print("[5/5] Outputting keys...")
     print()
     
-    # Print shards (user must write these down!)
-    setup.print_shards()
-    
-    # Print Tor setup instructions
-    setup.print_tor_instructions(private_key, public_key)
-    
-    print()
-    print("=" * 70)
-    print("✓ SETUP COMPLETE")
-    print("=" * 70)
-    print()
-    print("Next Steps:")
-    print("  1. Write down all 5 shards securely")
-    print("  2. Configure Tor Hidden Service (see instructions above)")
-    print("  3. Start lazarus_server.py")
-    print("  4. Access via Tor Browser with client authorization")
-    print()
-    print("⚠️  SECURITY WARNING:")
-    print("  - The Master Key is NOT saved anywhere (only its hash)")
-    print("  - Shards are your ONLY way to recover")
-    print("  - Losing 3+ shards = permanent lockout")
-    print()
+    if args.save_keys:
+        # HEADLESS MODE: Save to files
+        setup.save_keys_to_files(private_key, public_key)
+        
+        print()
+        print("=" * 70)
+        print("✓ SETUP COMPLETE (Headless Mode)")
+        print("=" * 70)
+        print()
+        print("Keys saved to files for automated installer.")
+        print("Run install_lazarus.sh to complete setup.")
+        print()
+    else:
+        # INTERACTIVE MODE: Print to screen
+        setup.print_shards()
+        setup.print_tor_instructions(private_key, public_key)
+        
+        print()
+        print("=" * 70)
+        print("✓ SETUP COMPLETE")
+        print("=" * 70)
+        print()
+        print("Next Steps:")
+        print("  1. Write down all 5 shards securely")
+        print("  2. Configure Tor Hidden Service (see instructions above)")
+        print("  3. Start lazarus_server.py")
+        print("  4. Access via Tor Browser with client authorization")
+        print()
+        print("⚠️  SECURITY WARNING:")
+        print("  - The Master Key is NOT saved anywhere (only its hash)")
+        print("  - Shards are your ONLY way to recover")
+        print("  - Losing 3+ shards = permanent lockout")
+        print()
     
     return 0
 
