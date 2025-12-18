@@ -96,8 +96,17 @@ Last-resort recovery mechanism when accidental iptables rules lock you out. Acce
 - **Anti-Brute Force**: 5-second delay per recovery attempt
 - **Constant-Time Verification**: Prevents timing attacks
 - **Emergency Action**: Flushes all iptables rules on valid recovery
+- **One-Command Deployment**: Automated installer handles entire setup
 
 **Use Case**: You accidentally run `iptables -P INPUT DROP` and lock yourself out. Access the Tor hidden service, provide 3 shards, and Lazarus flushes the firewall.
+
+**Automated Setup**:
+```bash
+cd lazarus_recovery
+sudo ./install_lazarus.sh
+# Displays onion URL, client key, and 5 shards (ONE TIME ONLY)
+# Save these immediately - they're deleted after display!
+```
 
 **[→ Lazarus Recovery guide](lazarus_recovery/README.md)**
 
