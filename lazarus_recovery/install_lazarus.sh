@@ -208,41 +208,43 @@ fi
 # Display Final Secrets (ONE TIME ONLY)
 ###############################################################################
 echo ""
-echo "═══════════════════════════════════════════════════════════════════════"
-echo "  ⚠️  CRITICAL: SAVE THESE SECRETS NOW (DISPLAYED ONLY ONCE)"
-echo "═══════════════════════════════════════════════════════════════════════"
+echo "════════════════════════════════════════════════════════════════════════════"
+echo "💀 LAZARUS RECOVERY INSTALLED SUCCESSFULLY 💀"
+echo "════════════════════════════════════════════════════════════════════════════"
 echo ""
 
 # Get onion address
 if [ -f "$TOR_DIR/hostname" ]; then
     ONION_ADDRESS=$(cat "$TOR_DIR/hostname")
-    echo -e "${GREEN}Tor Hidden Service Address:${NC}"
-    echo "  $ONION_ADDRESS"
-    echo ""
 else
     echo -e "${RED}ERROR: Could not read onion address${NC}"
     echo "Check: $TOR_DIR/hostname"
     exit 1
 fi
 
-# Display client private key (for admin machine)
-echo -e "${GREEN}Client Private Key (save to admin machine):${NC}"
+# Display onion address
+echo -e "${RED}[1] YOUR BACKDOOR URL (Save this):${NC}"
+echo "    $ONION_ADDRESS"
 echo ""
-echo "  File: ~/.tor/authorized_clients/lazarus.auth_private"
-echo "  Content:"
-echo ""
+
+# Display client private key
+echo -e "${RED}[2] YOUR CLIENT PRIVATE KEY (Save this to ~/.tor/authorized_clients/lazarus.auth_private):${NC}"
 cat generated_client_private.key | sed 's/^/    /'
 echo ""
 
 # Display Shamir shards
-echo "═══════════════════════════════════════════════════════════════════════"
-echo "  SHAMIR SHARDS (Write these down on PAPER - separate locations!)"
-echo "═══════════════════════════════════════════════════════════════════════"
+echo -e "${RED}[3] YOUR 5 RECOVERY SHARDS (Write these down PHYSICALLY on PAPER!):${NC}"
+cat shards.txt | sed 's/^/    /'
 echo ""
-cat shards.txt
+echo "════════════════════════════════════════════════════════════════════════════"
+echo -e "${YELLOW}⚠️  TEMPORARY FILES HAVE BEEN DELETED.${NC}"
+echo -e "${YELLOW}⚠️  IF YOU CLOSE THIS TERMINAL, THESE SECRETS ARE GONE FOREVER.${NC}"
+echo -e "${YELLOW}⚠️  WRITE THEM DOWN NOW - THIS IS YOUR ONLY CHANCE!${NC}"
+echo "════════════════════════════════════════════════════════════════════════════"
 echo ""
-echo "═══════════════════════════════════════════════════════════════════════"
+echo -e "${RED}DO NOT PROCEED UNTIL YOU HAVE SAVED ALL 3 ITEMS ABOVE!${NC}"
 echo ""
+read -p "Press Enter ONLY after you have saved all secrets..." 
 
 ###############################################################################
 # Cleanup Temporary Files
