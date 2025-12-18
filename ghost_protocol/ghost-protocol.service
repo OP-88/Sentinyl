@@ -1,0 +1,25 @@
+[Unit]
+Description=Ghost Protocol - Single Packet Authorization Server
+Documentation=https://github.com/OP-88/Sentinyl/tree/main/ghost_protocol
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/sentinyl/ghost_protocol
+Environment="GHOST_SECRET_KEY=CHANGE_ME_TO_YOUR_SECRET_KEY"
+ExecStart=/usr/bin/python3 /opt/sentinyl/ghost_protocol/ghost_server.py --port 62201
+Restart=on-failure
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+
+# Security hardening
+NoNew Privileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/log
+
+[Install]
+WantedBy=multi-user.target
