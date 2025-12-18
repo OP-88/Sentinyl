@@ -1,10 +1,10 @@
 # Sentinyl 🛡️
 
-**Modular B2B Digital Risk Protection & Infrastructure Defense Platform**
+**Enterprise-Grade Security Platform: External Threat Detection + Internal Defense + Advanced Access Control**
 
-Sentinyl combines **external threat detection** (Scout) with **internal infrastructure protection** (Guard) in a composable architecture. Buy what you need, scale as you grow.
+Sentinyl is a modular B2B security platform combining **external threat detection** (Scout), **internal infrastructure protection** (Guard), **cryptographic access control** (Ghost Protocol), and **emergency recovery systems** (Lazarus). Designed for the 99% of companies who can't afford enterprise security teams.
 
-**Sentinyl Scout** automates the "Reconnaissance" phase of ethical hacking to protect companies from external threats. **Sentinyl Guard** (optional) provides "EDR Lite" for VPS infrastructure - enterprise-grade behavioral detection without enterprise complexity.
+**Sentinyl Scout** automates reconnaissance-phase threat detection. **Sentinyl Guard** provides EDR Lite for VPS infrastructure. **Ghost Protocol** implements invisible port knocking via Single Packet Authorization. **Lazarus Recovery** offers Tor-based break-glass emergency access.
 
 ## 🎯 Features
 
@@ -58,6 +58,48 @@ Sentinyl combines **external threat detection** (Scout) with **internal infrastr
 
 **[→ Read the Guard technical guide](SENTINYL_GUARD.md)**  
 **[→ Understand the modular architecture](ARCHITECTURE.md)**
+
+---
+
+### 👻 Ghost Protocol (Advanced Module - Invisible Access)
+
+**Single Packet Authorization (SPA) for truly invisible server access**
+
+**Cryptographic port knocking** that keeps SSH and admin ports completely invisible to port scanners until receiving a valid encrypted UDP packet.
+
+#### Ghost Protocol Features
+- **True Invisibility**: Ports appear "filtered" to Nmap/Shodan (no open sockets)
+- **PyNaCl Encryption**: XSalsa20-Poly1305 authenticated encryption
+- **Anti-Replay Protection**: ±10 second timestamp validation window
+- **IP Verification**: Prevents spoofing attacks
+- **Scapy Packet Sniffing**: Bypasses firewall DROP rules for stealth
+- **Rate Limiting**: 1 knock per IP per 5 seconds
+- **Silent Operation**: Server never responds to invalid packets
+
+**Use Case**: Eliminate SSH brute-force attacks by making the port invisible until you "knock" with the correct cryptographic packet.
+
+**[→ Ghost Protocol documentation](ghost_protocol/README.md)**  
+**[→ Architectural decision: Scapy vs Socket](ghost_protocol/ADR_SCAPY_VS_SOCKET.md)**
+
+---
+
+### 🔥 Lazarus Recovery (Emergency Module - Break Glass)
+
+**Tor Hidden Service backdoor for emergency firewall recovery**
+
+Last-resort recovery mechanism when accidental iptables rules lock you out. Access via Tor Hidden Service with Shamir's Secret Sharing.
+
+#### Lazarus Features
+- **Shamir Secret Sharing**: 3-of-5 threshold (any 3 shards recover system)
+- **Tor Hidden Service**: v3 onion with x25519 client authorization
+- **Suicide Switch**: 3 failed attempts = Tor service killed
+- **Anti-Brute Force**: 5-second delay per recovery attempt
+- **Constant-Time Verification**: Prevents timing attacks
+- **Emergency Action**: Flushes all iptables rules on valid recovery
+
+**Use Case**: You accidentally run `iptables -P INPUT DROP` and lock yourself out. Access the Tor hidden service, provide 3 shards, and Lazarus flushes the firewall.
+
+**[→ Lazarus Recovery guide](lazarus_recovery/README.md)**
 
 ---
 
