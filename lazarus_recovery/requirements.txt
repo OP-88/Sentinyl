@@ -1,0 +1,14 @@
+# Lazarus Recovery - "Break Glass" Tor Backdoor
+# Dependencies for setup and server
+
+# Web framework
+flask>=3.0.0
+
+# Shamir's Secret Sharing
+shamirs>=1.0.0  # 3-of-5 threshold secret splitting
+
+# Cryptography
+cryptography>=41.0.0  # For Tor x25519 keypair generation
+
+# Security
+secrets  # Constant-time comparison (stdlib, listed for clarity)
