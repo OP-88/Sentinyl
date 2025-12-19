@@ -1,0 +1,19 @@
+{
+    "name": "sentinyl-overwatch-bridge",
+    "version": "1.0.0",
+    "description": "Socket.IO bridge server for Sentinyl Overwatch Dashboard",
+    "private": true,
+    "type": "module",
+    "main": "server.js",
+    "scripts": {
+        "start": "node server.js",
+        "dev": "node server.js"
+    },
+    "dependencies": {
+        "socket.io": "^4.7.2",
+        "express": "^4.18.2",
+        "cors": "^2.8.5"
+    },
+    "author": "OP-88",
+    "license": "GPL-3.0"
+}
