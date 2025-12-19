@@ -158,7 +158,6 @@ export default function OverwatchDrawer({ isOpen, onClose }) {
                                 >
                                     <motion.div
                                         animate={{
-                                            scale: [1, 1.05, 1],
                                             rotate: [0, 1, -1, 0]
                                         }}
                                         transition={{

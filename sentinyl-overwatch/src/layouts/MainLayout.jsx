@@ -1,32 +1,15 @@
-import { Link, useLocation } from 'react-router-dom';
+import { useState } from 'react';
 import { motion } from 'framer-motion';
-import {
-    LayoutDashboard,
-    Eye,
-    Shield,
-    Activity,
-    Settings,
-    LogOut
-} from 'lucide-react';
+import { Shield, Settings } from 'lucide-react';
 import { useUser } from '../context/UserContext';
-import { useTierAccess } from '../hooks/useTierAccess';
+import SettingsPanel from '../components/SettingsPanel';
 
 /**
- * MainLayout - Shell for SIEM dashboard with navigation
+ * MainLayout - Simplified header-only layout for SIEM dashboard
  */
 export default function MainLayout({ children }) {
-    const location = useLocation();
-    const { logout, tierName, tier } = useUser();
-    const { hasScout, hasGuard, hasGhost, hasLazarus } = useTierAccess();
-
-    const navItems = [
-        {
-            path: '/',
-            icon: LayoutDashboard,
-            label: 'Dashboard',
-            show: true
-        }
-    ];
+    const { tierName, tier } = useUser();
+    const [isSettingsOpen, setIsSettingsOpen] = useState(false);
 
     const getTierBadgeColor = () => {
         switch (tier) {
@@ -56,90 +39,42 @@ export default function MainLayout({ children }) {
                             </div>
                         </div>
 
-                        {/* User Info */}
-                        <div className="flex items-center gap-4">
-                            <div className="flex items-center gap-3">
-                                <div className="text-right">
-                                    <p className="text-sm text-white font-medium">Admin</p>
-                                    <span className={`text-xs px-2 py-1 rounded-full ${getTierBadgeColor()}`}>
-                                        {tierName}
-                                    </span>
-                                </div>
-                                <Activity className="w-8 h-8 text-green-400" />
+                        {/* Right Side: Status, Tier Badge, Settings */}
+                        <div className="flex items-center gap-6">
+                            {/* System Status Indicator */}
+                            <div className="flex items-center gap-2 px-3 py-2 bg-slate-800/50 rounded-lg border border-slate-700">
+                                <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
+                                <span className="text-xs font-medium text-green-400">SYSTEM ONLINE</span>
                             </div>
+
+                            {/* User Info & Tier - Centered */}
+                            <div className="text-center">
+                                <p className="text-sm text-white font-medium">Admin</p>
+                                <span className={`inline-block text-xs px-2 py-1 rounded-full ${getTierBadgeColor()}`}>
+                                    {tierName}
+                                </span>
+                            </div>
+
+                            {/* Settings Button - No Scale Animation */}
+                            <button
+                                onClick={() => setIsSettingsOpen(true)}
+                                className="p-3 bg-slate-800/50 hover:bg-cyan-600/20 rounded-lg border border-slate-700 hover:border-cyan-400 transition-all duration-200 group"
+                                title="Settings"
+                            >
+                                <Settings className="w-5 h-5 text-slate-400 group-hover:text-cyan-300 group-hover:rotate-90 transition-all duration-300" />
+                            </button>
                         </div>
                     </div>
                 </div>
             </nav>
 
-            <div className="flex h-[calc(100vh-73px)]">
-                {/* Sidebar */}
-                <aside className="w-64 bg-slate-900/50 backdrop-blur border-r border-slate-700">
-                    <nav className="p-4 space-y-2">
-                        {navItems
-                            .filter(item => item.show)
-                            .map((item) => {
-                                const Icon = item.icon;
-                                const isActive = location.pathname === item.path;
+            {/* Main Content - Full Width */}
+            <main className="h-[calc(100vh-73px)] overflow-y-auto">
+                {children}
+            </main>
 
-                                return (
-                                    <Link
-                                        key={item.path}
-                                        to={item.path}
-                                        className="block"
-                                    >
-                                        <motion.div
-                                            whileHover={{ scale: 1.02, x: 4 }}
-                                            whileTap={{ scale: 0.98 }}
-                                            className={`flex items-center gap-3 px-4 py-3 rounded-lg transition-all ${isActive
-                                                ? 'bg-cyan-600 text-white shadow-lg shadow-cyan-600/30'
-                                                : 'text-slate-300 hover:bg-slate-800 hover:text-white'
-                                                }`}
-                                        >
-                                            <Icon className="w-5 h-5" />
-                                            <span className="font-medium">{item.label}</span>
-                                        </motion.div>
-                                    </Link>
-                                );
-                            })}
-
-                        {/* Settings & Logout */}
-                        <div className="pt-4 mt-4 border-t border-slate-700">
-                            <button
-                                onClick={() => {/* TODO: Settings modal */ }}
-                                className="flex items-center gap-3 px-4 py-3 rounded-lg text-slate-300 hover:bg-slate-800 hover:text-white transition-all w-full"
-                            >
-                                <Settings className="w-5 h-5" />
-                                <span className="font-medium">Settings</span>
-                            </button>
-
-                            <button
-                                onClick={logout}
-                                className="flex items-center gap-3 px-4 py-3 rounded-lg text-red-400 hover:bg-red-950 hover:text-red-300 transition-all w-full"
-                            >
-                                <LogOut className="w-5 h-5" />
-                                <span className="font-medium">Logout</span>
-                            </button>
-                        </div>
-                    </nav>
-
-                    {/* System Status */}
-                    <div className="absolute bottom-4 left-4 right-4">
-                        <div className="bg-slate-800/50 rounded-lg p-3 border border-slate-700">
-                            <div className="flex items-center gap-2 mb-2">
-                                <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
-                                <span className="text-xs font-medium text-green-400">SYSTEM ONLINE</span>
-                            </div>
-                            <p className="text-xs text-slate-400">All services operational</p>
-                        </div>
-                    </div>
-                </aside>
-
-                {/* Main Content */}
-                <main className="flex-1 overflow-y-auto">
-                    {children}
-                </main>
-            </div>
+            {/* Settings Panel */}
+            <SettingsPanel isOpen={isSettingsOpen} onClose={() => setIsSettingsOpen(false)} />
         </div>
     );
 }

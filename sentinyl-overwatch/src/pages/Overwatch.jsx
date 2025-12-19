@@ -141,7 +141,6 @@ export default function Overwatch() {
                     >
                         <motion.div
                             animate={{
-                                scale: [1, 1.05, 1],
                                 rotate: [0, 1, -1, 0]
                             }}
                             transition={{

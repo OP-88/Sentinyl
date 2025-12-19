@@ -7,6 +7,8 @@ import AlertsTable from '../components/dashboard/AlertsTable';
 import ThreatChart from '../components/dashboard/ThreatChart';
 import SeverityPieChart from '../components/dashboard/SeverityPieChart';
 import OverwatchDrawer from '../components/OverwatchDrawer';
+import BlockIPModal from '../components/modals/BlockIPModal';
+import ExportDataModal from '../components/modals/ExportDataModal';
 
 /**
  * Main SIEM Dashboard - Corporate cybersecurity interface
@@ -17,6 +19,8 @@ import OverwatchDrawer from '../components/OverwatchDrawer';
 export default function Dashboard() {
     const { hasScout, hasGuard, tier } = useTierAccess();
     const [isOverwatchOpen, setIsOverwatchOpen] = useState(false);
+    const [isBlockIPModalOpen, setIsBlockIPModalOpen] = useState(false);
+    const [isExportModalOpen, setIsExportModalOpen] = useState(false);
 
     const handleStartScan = (scanType) => {
         // TODO: Implement scan start logic with API
@@ -26,6 +30,39 @@ export default function Dashboard() {
 
     const handleOpenOverwatch = () => {
         setIsOverwatchOpen(true);
+    };
+
+    const handleBlockIP = async (ipData) => {
+        // TODO: Connect to FastAPI backend
+        console.log('Blocking IP:', ipData);
+        alert(`IP ${ipData.ip} blocked for ${ipData.duration}\n${ipData.reason || 'No reason provided'}`);
+        // Simulate API call
+        return new Promise((resolve) => setTimeout(resolve, 1000));
+    };
+
+    const handleExportData = async (exportConfig) => {
+        // TODO: Connect to FastAPI backend
+        console.log('Exporting data:', exportConfig);
+
+        // Simulate export with download trigger
+        const data = {
+            type: exportConfig.exportType,
+            format: exportConfig.format,
+            dateRange: exportConfig.dateRange,
+            timestamp: new Date().toISOString(),
+            sampleData: 'This is sample export data. Will be replaced with real API data.'
+        };
+
+        // Create and trigger download
+        const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `sentinyl-${exportConfig.exportType}-${Date.now()}.${exportConfig.format}`;
+        a.click();
+        URL.revokeObjectURL(url);
+
+        return new Promise((resolve) => setTimeout(resolve, 1000));
     };
 
     return (
@@ -115,7 +152,12 @@ export default function Dashboard() {
                 </div>
 
                 {/* Quick Actions */}
-                <QuickActions onStartScan={handleStartScan} onOpenOverwatch={handleOpenOverwatch} />
+                <QuickActions
+                    onStartScan={handleStartScan}
+                    onOpenOverwatch={handleOpenOverwatch}
+                    onBlockIP={() => setIsBlockIPModalOpen(true)}
+                    onExportData={() => setIsExportModalOpen(true)}
+                />
 
                 {/* Charts Row */}
                 {hasScout && (
@@ -147,6 +189,20 @@ export default function Dashboard() {
 
             {/* Overwatch Drawer */}
             <OverwatchDrawer isOpen={isOverwatchOpen} onClose={() => setIsOverwatchOpen(false)} />
+
+            {/* Block IP Modal */}
+            <BlockIPModal
+                isOpen={isBlockIPModalOpen}
+                onClose={() => setIsBlockIPModalOpen(false)}
+                onBlock={handleBlockIP}
+            />
+
+            {/* Export Data Modal */}
+            <ExportDataModal
+                isOpen={isExportModalOpen}
+                onClose={() => setIsExportModalOpen(false)}
+                onExport={handleExportData}
+            />
         </>
     );
 }

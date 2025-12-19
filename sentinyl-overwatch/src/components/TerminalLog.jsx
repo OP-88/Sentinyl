@@ -81,9 +81,9 @@ export default function TerminalLog({ logs = [] }) {
                             logs.slice().reverse().map((log, index) => (
                                 <motion.div
                                     key={`${log.timestamp}-${index}`}
-                                    initial={{ opacity: 0, x: -20, scale: 0.95 }}
-                                    animate={{ opacity: 1, x: 0, scale: 1 }}
-                                    exit={{ opacity: 0, scale: 0.95 }}
+                                    initial={{ opacity: 0, x: -20 }}
+                                    animate={{ opacity: 1, x: 0 }}
+                                    exit={{ opacity: 0 }}
                                     transition={{ duration: 0.3, ease: "easeOut" }}
                                     className={getLogStyle(log)}
                                 >
@@ -108,10 +108,10 @@ export default function TerminalLog({ logs = [] }) {
                                             {log.ip && <span className="text-cyan-400">{log.ip}</span>}
                                             {log.status && (
                                                 <span className={`ml-2 ${log.status.toUpperCase() === 'ACCEPTED' || log.status.toUpperCase() === 'SUCCESS'
-                                                        ? 'text-green-300'
-                                                        : log.status.toUpperCase() === 'TRIGGERED'
-                                                            ? 'text-red-300 font-bold'
-                                                            : 'text-red-400'
+                                                    ? 'text-green-300'
+                                                    : log.status.toUpperCase() === 'TRIGGERED'
+                                                        ? 'text-red-300 font-bold'
+                                                        : 'text-red-400'
                                                     }`}>
                                                     {log.status.toUpperCase()}
                                                 </span>

@@ -7,7 +7,7 @@ import { useTierAccess } from '../../hooks/useTierAccess';
  * 
  * Tier-gated action buttons for quick access to key features
  */
-export default function QuickActions({ onStartScan, onOpenOverwatch }) {
+export default function QuickActions({ onStartScan, onOpenOverwatch, onBlockIP, onExportData }) {
     const { hasScout, hasGuard } = useTierAccess();
 
     const actions = [
@@ -33,7 +33,7 @@ export default function QuickActions({ onStartScan, onOpenOverwatch }) {
             description: 'Add IP to blocklist',
             color: 'red',
             show: hasGuard,
-            onClick: () => alert('Block IP modal - TODO')
+            onClick: onBlockIP
         },
         {
             icon: Eye,
@@ -49,17 +49,17 @@ export default function QuickActions({ onStartScan, onOpenOverwatch }) {
             description: 'Download reports',
             color: 'green',
             show: true,
-            onClick: () => alert('Export data - TODO')
+            onClick: onExportData
         }
     ];
 
     const getColorClasses = (color) => {
         const colors = {
-            blue: 'from-blue-500/20 to-blue-600/20 border-blue-500/30 hover:border-blue-400 text-blue-300',
-            purple: 'from-purple-500/20 to-purple-600/20 border-purple-500/30 hover:border-purple-400 text-purple-300',
-            red: 'from-red-500/20 to-red-600/20 border-red-500/30 hover:border-red-400 text-red-300',
-            cyan: 'from-cyan-500/20 to-cyan-600/20 border-cyan-500/30 hover:border-cyan-400 text-cyan-300',
-            green: 'from-green-500/20 to-green-600/20 border-green-500/30 hover:border-green-400 text-green-300'
+            blue: 'from-blue-500/20 to-blue-600/20 border-blue-500/30 hover:border-blue-400 text-blue-300 hover:from-blue-500/30',
+            purple: 'from-purple-500/20 to-purple-600/20 border-purple-500/30 hover:border-purple-400 text-purple-300 hover:from-purple-500/30',
+            red: 'from-red-500/20 to-red-600/20 border-red-500/30 hover:border-red-400 text-red-300 hover:from-red-500/30',
+            cyan: 'from-cyan-500/20 to-cyan-600/20 border-cyan-500/30 hover:border-cyan-400 text-cyan-300 hover:from-cyan-500/30',
+            green: 'from-green-500/20 to-green-600/20 border-green-500/30 hover:border-green-400 text-green-300 hover:from-green-500/30'
         };
         return colors[color] || colors.blue;
     };
@@ -80,13 +80,11 @@ export default function QuickActions({ onStartScan, onOpenOverwatch }) {
                         return (
                             <motion.div
                                 key={action.label}
-                                initial={{ opacity: 0, scale: 0.9 }}
-                                animate={{ opacity: 1, scale: 1 }}
+                                initial={{ opacity: 0 }}
+                                animate={{ opacity: 1 }}
                                 transition={{ delay: index * 0.05 }}
-                                whileHover={{ scale: 1.02 }}
-                                whileTap={{ scale: 0.98 }}
                                 onClick={action.onClick}
-                                className={`bg-gradient-to-br ${getColorClasses(action.color)} border rounded-lg p-4 cursor-pointer transition-all`}
+                                className={`bg-gradient-to-br ${getColorClasses(action.color)} border rounded-lg p-4 cursor-pointer transition-all duration-200 hover:shadow-lg`}
                             >
                                 <div className="flex items-start gap-3">
                                     <div className="p-2 bg-slate-900/50 rounded-lg">
