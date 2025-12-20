@@ -1,6 +1,6 @@
 import axios from 'axios';
 
-const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:8000';
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 
 // Create axios instance
 const api = axios.create({
@@ -142,8 +142,23 @@ export const systemAPI = {
     getHealth: async () => {
         const response = await api.get('/health');
         return response.data;
+    },
+
+    // Export data (alerts, threats, scan results)
+    exportData: async (exportType, format, dateRange) => {
+        const response = await api.get('/export', {
+            params: {
+                type: exportType,
+                format,
+                start_date: dateRange?.start,
+                end_date: dateRange?.end
+            },
+            responseType: format === 'csv' ? 'blob' : 'json'
+        });
+        return response.data;
     }
 };
 
 // Export the base axios instance for custom calls
 export default api;
+

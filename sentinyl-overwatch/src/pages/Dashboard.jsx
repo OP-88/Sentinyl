@@ -2,6 +2,9 @@ import { useState } from 'react';
 import { motion } from 'framer-motion';
 import { Shield, Activity, AlertTriangle, TrendingUp } from 'lucide-react';
 import { useTierAccess } from '../hooks/useTierAccess';
+import { useApiOnMount, useApi } from '../hooks/useApi';
+import { useToast } from '../context/ToastContext';
+import { scoutAPI, guardAPI, systemAPI } from '../services/api';
 import QuickActions from '../components/dashboard/QuickActions';
 import AlertsTable from '../components/dashboard/AlertsTable';
 import ThreatChart from '../components/dashboard/ThreatChart';
@@ -18,14 +21,46 @@ import ExportDataModal from '../components/modals/ExportDataModal';
  */
 export default function Dashboard() {
     const { hasScout, hasGuard, tier } = useTierAccess();
+    const toast = useToast();
     const [isOverwatchOpen, setIsOverwatchOpen] = useState(false);
     const [isBlockIPModalOpen, setIsBlockIPModalOpen] = useState(false);
     const [isExportModalOpen, setIsExportModalOpen] = useState(false);
 
-    const handleStartScan = (scanType) => {
-        // TODO: Implement scan start logic with API
-        console.log('Starting scan:', scanType);
-        alert(`Starting ${scanType} scan...\nThis will connect to the FastAPI backend.`);
+    // Fetch platform stats on mount
+    const { data: stats, loading: statsLoading, error: statsError, refetch: refetchStats } = useApiOnMount(
+        scoutAPI.getStats,
+        [],
+        { showErrorToast: false } // Handle error display manually
+    );
+
+    // API hooks for actions
+    const { execute: startScan, loading: scanLoading } = useApi(scoutAPI.startScan, {
+        showSuccessToast: true,
+        successMessage: 'Scan started successfully'
+    });
+
+    const { execute: blockIP, loading: blockIPLoading } = useApi(guardAPI.blockIP, {
+        showSuccessToast: true,
+        successMessage: 'IP blocked successfully'
+    });
+
+    const { execute: exportData, loading: exportLoading } = useApi(systemAPI.exportData, {
+        showSuccessToast: true,
+        successMessage: 'Data exported successfully'
+    });
+
+    const handleStartScan = async (scanType) => {
+        try {
+            // Prompt for domain
+            const domain = prompt('Enter domain to scan:');
+            if (!domain) return;
+
+            await startScan(domain, scanType, 'normal');
+            refetchStats(); // Refresh stats after starting scan
+        } catch (error) {
+            // Error already handled by useApi hook
+            console.error('Scan error:', error);
+        }
     };
 
     const handleOpenOverwatch = () => {
@@ -33,37 +68,45 @@ export default function Dashboard() {
     };
 
     const handleBlockIP = async (ipData) => {
-        // TODO: Connect to FastAPI backend
-        console.log('Blocking IP:', ipData);
-        alert(`IP ${ipData.ip} blocked for ${ipData.duration}\n${ipData.reason || 'No reason provided'}`);
-        // Simulate API call
-        return new Promise((resolve) => setTimeout(resolve, 1000));
+        try {
+            // Determine agent_id (in real scenario, this would come from user selection)
+            const agentId = 'default-agent-id'; // TODO: Get from context or user selection
+
+            await blockIP(ipData.ip, ipData.reason || 'Manual block from dashboard', agentId);
+            setIsBlockIPModalOpen(false);
+        } catch (error) {
+            console.error('Block IP error:', error);
+            throw error; // Re-throw to let modal handle it
+        }
     };
 
     const handleExportData = async (exportConfig) => {
-        // TODO: Connect to FastAPI backend
-        console.log('Exporting data:', exportConfig);
+        try {
+            const data = await exportData(
+                exportConfig.exportType,
+                exportConfig.format,
+                exportConfig.dateRange
+            );
 
-        // Simulate export with download trigger
-        const data = {
-            type: exportConfig.exportType,
-            format: exportConfig.format,
-            dateRange: exportConfig.dateRange,
-            timestamp: new Date().toISOString(),
-            sampleData: 'This is sample export data. Will be replaced with real API data.'
-        };
+            // Create and trigger download
+            const blob = new Blob(
+                [typeof data === 'string' ? data : JSON.stringify(data, null, 2)],
+                { type: exportConfig.format === 'csv' ? 'text/csv' : 'application/json' }
+            );
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `sentinyl-${exportConfig.exportType}-${Date.now()}.${exportConfig.format}`;
+            a.click();
+            URL.revokeObjectURL(url);
 
-        // Create and trigger download
-        const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `sentinyl-${exportConfig.exportType}-${Date.now()}.${exportConfig.format}`;
-        a.click();
-        URL.revokeObjectURL(url);
-
-        return new Promise((resolve) => setTimeout(resolve, 1000));
+            setIsExportModalOpen(false);
+        } catch (error) {
+            console.error('Export error:', error);
+            throw error;
+        }
     };
+
 
     return (
         <>
@@ -73,6 +116,19 @@ export default function Dashboard() {
                     <h1 className="text-3xl font-bold text-white mb-2">Security Operations Dashboard</h1>
                     <p className="text-slate-400">Real-time threat monitoring and incident response</p>
                 </div>
+
+                {/* Stats Loading Error State */}
+                {statsError && !statsLoading && (
+                    <div className="bg-red-500/10 border border-red-500/50 rounded-xl p-4 text-center">
+                        <p className="text-red-400">Failed to load statistics. </p>
+                        <button
+                            onClick={refetchStats}
+                            className="mt-2 px-4 py-2 bg-red-500 hover:bg-red-600 text-white rounded-lg transition-colors text-sm"
+                        >
+                            Retry
+                        </button>
+                    </div>
+                )}
 
                 {/* Overview Cards */}
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -87,14 +143,21 @@ export default function Dashboard() {
                                 <div className="p-3 bg-red-500/20 rounded-lg">
                                     <AlertTriangle className="w-6 h-6 text-red-400" />
                                 </div>
-                                <span className="text-sm text-slate-400">Last 24h</span>
+                                <span className="text-sm text-slate-400">Total</span>
                             </div>
-                            <h3 className="text-2xl font-bold text-white mb-1">247</h3>
-                            <p className="text-sm text-slate-400">Total Threats</p>
-                            <div className="mt-3 flex items-center gap-2">
-                                <TrendingUp className="w-4 h-4 text-green-400" />
-                                <span className="text-xs text-green-400">+12% from yesterday</span>
-                            </div>
+                            {statsLoading ? (
+                                <div className="animate-pulse">
+                                    <div className="h-8 bg-slate-700 rounded w-20 mb-1"></div>
+                                    <div className="h-4 bg-slate-700 rounded w-24"></div>
+                                </div>
+                            ) : (
+                                <>
+                                    <h3 className="text-2xl font-bold text-white mb-1">
+                                        {stats?.active_threats || 0}
+                                    </h3>
+                                    <p className="text-sm text-slate-400">Active Threats</p>
+                                </>
+                            )}
                         </motion.div>
                     )}
 
@@ -111,8 +174,19 @@ export default function Dashboard() {
                                 </div>
                                 <span className="text-sm text-slate-400">Active</span>
                             </div>
-                            <h3 className="text-2xl font-bold text-white mb-1">3</h3>
-                            <p className="text-sm text-slate-400">Running Scans</p>
+                            {statsLoading ? (
+                                <div className="animate-pulse">
+                                    <div className="h-8 bg-slate-700 rounded w-20 mb-1"></div>
+                                    <div className="h-4 bg-slate-700 rounded w-24"></div>
+                                </div>
+                            ) : (
+                                <>
+                                    <h3 className="text-2xl font-bold text-white mb-1">
+                                        {stats?.pending_scans || 0}
+                                    </h3>
+                                    <p className="text-sm text-slate-400">Running Scans</p>
+                                </>
+                            )}
                         </motion.div>
                     )}
 
@@ -127,10 +201,21 @@ export default function Dashboard() {
                                 <div className="p-3 bg-purple-500/20 rounded-lg">
                                     <Shield className="w-6 h-6 text-purple-400" />
                                 </div>
-                                <span className="text-sm text-slate-400">Blocked</span>
+                                <span className="text-sm text-slate-400">Protected</span>
                             </div>
-                            <h3 className="text-2xl font-bold text-white mb-1">42</h3>
-                            <p className="text-sm text-slate-400">IPs Blocked</p>
+                            {statsLoading ? (
+                                <div className="animate-pulse">
+                                    <div className="h-8 bg-slate-700 rounded w-20 mb-1"></div>
+                                    <div className="h-4 bg-slate-700 rounded w-24"></div>
+                                </div>
+                            ) : (
+                                <>
+                                    <h3 className="text-2xl font-bold text-white mb-1">
+                                        {stats?.total_domains || 0}
+                                    </h3>
+                                    <p className="text-sm text-slate-400">Domains Monitored</p>
+                                </>
+                            )}
                         </motion.div>
                     )}
 

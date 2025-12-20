@@ -3,7 +3,7 @@ Configuration management for Sentinyl API
 Uses Pydantic Settings for environment variable validation
 """
 from pydantic_settings import BaseSettings
-from typing import Optional
+from typing import Optional, List
 
 
 class Settings(BaseSettings):
@@ -34,8 +34,16 @@ class Settings(BaseSettings):
     API_HOST: str = "0.0.0.0"
     API_PORT: int = 8000
     
+    # CORS Settings - Comma-separated list of allowed origins
+    ALLOWED_ORIGINS: str = "http://localhost:5173,http://localhost:3000"
+    
     # Worker Settings
     WORKER_POLL_INTERVAL: int = 5  # seconds
+    
+    @property
+    def allowed_origins_list(self) -> List[str]:
+        """Parse comma-separated origins into a list"""
+        return [origin.strip() for origin in self.ALLOWED_ORIGINS.split(',') if origin.strip()]
     
     class Config:
         env_file = ".env"
@@ -44,3 +52,4 @@ class Settings(BaseSettings):
 
 # Global settings instance
 settings = Settings()
+
