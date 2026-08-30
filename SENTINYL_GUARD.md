@@ -21,7 +21,7 @@ We don't rely on passive logs. We implement an **Active Watchdog** that lives on
 Instead of scanning for known malware files (signatures), we scan for **"Absurd Behavior."**
 
 #### Geo-Fencing
-The agent checks **every established network connection**. If your server in Nairobi connects to an IP in Russia or North Korea, that is an **anomaly**.
+The agent checks **every established network connection**. If your server connects to an IP in Russia or North Korea, that is an **anomaly**.
 
 **How it works:**
 - Uses `psutil` to monitor all network connections
